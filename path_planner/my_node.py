@@ -1,22 +1,23 @@
 import rclpy
 from rclpy.node import Node
-from lart_msgs.msg import ConeArray  # Importing ConeArray from lart_msgs
-from geometry_msgs.msg import Path  # Importing Path from geometry_msgs
+from lart_msgs.msg import ConeArray
+from nav_msgs.msg import Path 
+from geometry_msgs.msg import PoseStamped 
 from fsd_path_planning import PathPlanner, MissionTypes, ConeTypes
 import numpy as np
+from transformations import quaternion_from_euler
 
 class MyNode(Node):
     def __init__(self):
         super().__init__('my_node')
         self.planner = PathPlanner(MissionTypes.trackdrive)
 
-        # Subscribe to ConeArray topic
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
             'cone_array_topic',  # Replace with the actual topic name
             self.cone_array_listener_callback,
             10)
-        self.cone_array_subscription  # Prevent unused variable warning
+        self.cone_array_subscription
 
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
@@ -25,19 +26,33 @@ class MyNode(Node):
             10)
 
     def cone_array_listener_callback(self, msg):
-        # Process the incoming ConeArray message
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
 
-        # Calculate the path
         path = self.planner.calculate_path_in_global_frame(
             cones_by_type, car_position, car_direction)
 
-        # Publish the calculated path
         path_msg = Path()
         path_msg.header.stamp = self.get_clock().now().to_msg()
-        path_msg.header.frame_id = 'world'  # or the appropriate frame ID
-        # Populate path_msg.poses based on the calculated path
+        path_msg.header.frame_id = 'world'
+
+        for point in path:
+            pose = PoseStamped()
+            pose.header.stamp = path_msg.header.stamp
+            pose.header.frame_id = path_msg.header.frame_id
+
+            pose.pose.position.x = point[1]
+            pose.pose.position.y = point[2]
+
+            # Assuming car_direction is a float representing the direction in radians
+            quaternion = quaternion_from_euler(0, 0, car_direction)
+            pose.pose.orientation.x = quaternion[0]
+            pose.pose.orientation.y = quaternion[1]
+            pose.pose.orientation.z = quaternion[2]
+            pose.pose.orientation.w = quaternion[3]
+
+            path_msg.poses.append(pose)
+
         self.path_publisher.publish(path_msg)
 
     def process_cones(self, cone_array_msg):
@@ -55,8 +70,6 @@ class MyNode(Node):
         return cones_by_type
 
     def get_car_state(self):
-        # Placeholder for actual car state data
-        # Replace with actual implementation to get the car's current position and direction
         return np.array([0.0, 0.0]), np.array([1.0, 0.0])
 
 def main(args=None):
@@ -68,9 +81,6 @@ def main(args=None):
         # Handle Ctrl-C shutdown
         node.get_logger().info('Node terminated.')
     finally:
-        # Destroy the node explicitly
-        # (optional - otherwise it will be done automatically
-        # when the garbage collector destroys the node object)
         node.destroy_node()
         rclpy.shutdown()
 
