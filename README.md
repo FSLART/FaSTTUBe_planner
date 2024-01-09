@@ -20,6 +20,9 @@ On the publish and subscription replace with the actual topic name
 - transformations
 - [fsd_path_planning](https://github.com/papalotis/ft-fsd-path-planning)
 
+## Installation
+- pip install "fsd-path-planning[demo] @ git+https://git@github.com/papalotis/ft-fsd-path-planning.git"
+
 ## Building
 - Install the dependencies.
 - root worskpace run: `colcon build`.
