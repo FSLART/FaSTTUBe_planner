@@ -11,6 +11,8 @@ The algorithm outputs:
 
 The algorithm is completely stateless. Every time it is called no previous results are used. The only aspect that can be used again is the path that was previously generated. It is only used if the path calculation has failed.
 
+On the publish and subscription replace with the actual topic name
+
 ## Dependencies
 - ros2
 - [lart_msgs](https://github.com/FSLART/lart_msgs)
