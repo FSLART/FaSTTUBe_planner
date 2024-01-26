@@ -21,7 +21,7 @@ On the publish and subscription replace with the actual topic name
 - [fsd_path_planning](https://github.com/papalotis/ft-fsd-path-planning)
 
 ## Installation
-- pip install "fsd-path-planning[demo] @ git+https://git@github.com/papalotis/ft-fsd-path-planning.git"
+- pip install "fsd-path-planning[demo] @ git+https://git@github.com/FSLART/ft-fsd-path-planning.git"
 
 ## Building
 - Install the dependencies.
