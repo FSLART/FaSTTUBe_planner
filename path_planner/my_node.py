@@ -28,7 +28,7 @@ class MyNode(Node):
             Path,
             'planned_path_topic',  # Replace with the actual topic name
             10)
-        self.generate_static_data_and_plan_path()
+        # self.generate_static_data_and_plan_path()
 
 
     def generate_static_data_and_plan_path(self):
@@ -148,16 +148,16 @@ class MyNode(Node):
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
         for cone in cone_array_msg.cones:
             position = np.array([cone.position.x, cone.position.y])
-            if cone.color == ConeTypes.LEFT:
+            if cone.class_type == ConeTypes.LEFT:
                 cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
-            elif cone.color == ConeTypes.RIGHT:
+            elif cone.class_type == ConeTypes.RIGHT:
                 cones_by_type[ConeTypes.RIGHT] = np.vstack([cones_by_type[ConeTypes.RIGHT], position])
-            elif cone.color == ConeTypes.UNKNOWN:
+            elif cone.class_type == ConeTypes.UNKNOWN:
                 cones_by_type[ConeTypes.UNKNOWN] = np.vstack([cones_by_type[ConeTypes.UNKNOWN], position])
         return cones_by_type
 
     def get_car_state(self):
-        return np.array([0.0, 0.0]), np.array([1.0, 0.0])
+        return np.array([0.0, 0.0]), 0
 
 def main(args=None):
     rclpy.init(args=args)

@@ -19,6 +19,7 @@ On the publish and subscription replace with the actual topic name
 - numpy
 - transformations
 - [fsd_path_planning](https://github.com/papalotis/ft-fsd-path-planning)
+- pip > 23.0
 
 ## Installation
 - pip install "fsd-path-planning[demo] @ git+https://git@github.com/FSLART/ft-fsd-path-planning.git"
