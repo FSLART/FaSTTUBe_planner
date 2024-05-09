@@ -10,6 +10,8 @@ from fsd_path_planning.utils.math_utils import unit_2d_vector_from_angle, rotate
 from fsd_path_planning.utils.cone_types import ConeTypes
 import matplotlib.pyplot as plt
 
+import eufs_msgs.msg as eufs_msgs
+
 
 class MyNode(Node):
     def __init__(self):
@@ -17,11 +19,12 @@ class MyNode(Node):
         self.planner = PathPlanner(MissionTypes.trackdrive)
 
         self.cone_array_subscription = self.create_subscription(
-            ConeArray,
-            'cone_array_topic',  # Replace with the actual topic name
+            eufs_msgs.ConeArrayWithCovariance,
+            '/ground_truth/cones',  # Replace with the actual topic name
             self.cone_array_listener_callback,
             10)
         self.cone_array_subscription
+
 
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
@@ -112,7 +115,8 @@ class MyNode(Node):
 
 
     def cone_array_listener_callback(self, msg):
-
+        #TODO it comes with global or local coordinates?
+        print("Received cone array message")
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
 
@@ -143,21 +147,26 @@ class MyNode(Node):
         self.path_publisher.publish(path_msg)
 
     def process_cones(self, cone_array_msg):
-        # Assuming cone_array_msg has fields similar to:
-        # cone_array_msg.cones, where each cone has 'position' and 'color'
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
-        for cone in cone_array_msg.cones:
-            position = np.array([cone.position.x, cone.position.y])
-            if cone.class_type == ConeTypes.LEFT:
-                cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
-            elif cone.class_type == ConeTypes.RIGHT:
-                cones_by_type[ConeTypes.RIGHT] = np.vstack([cones_by_type[ConeTypes.RIGHT], position])
-            elif cone.class_type == ConeTypes.UNKNOWN:
-                cones_by_type[ConeTypes.UNKNOWN] = np.vstack([cones_by_type[ConeTypes.UNKNOWN], position])
+        for cone in cone_array_msg.blue_cones:
+            position = np.array([cone.point.x, cone.point.y])
+            cones_by_type[ConeTypes.BLUE] = np.vstack([cones_by_type[ConeTypes.BLUE], position])
+        for cone in cone_array_msg.yellow_cones:
+            position = np.array([cone.point.x, cone.point.y])
+            cones_by_type[ConeTypes.YELLOW] = np.vstack([cones_by_type[ConeTypes.YELLOW], position])
+        for cone in cone_array_msg.unknown_color_cones:
+            position = np.array([cone.point.x, cone.point.y])
+            cones_by_type[ConeTypes.UNKNOWN] = np.vstack([cones_by_type[ConeTypes.UNKNOWN], position])
+        for cone in cone_array_msg.orange_cones:
+            position = np.array([cone.point.x, cone.point.y])
+            cones_by_type[ConeTypes.ORANGE_SMALL] = np.vstack([cones_by_type[ConeTypes.ORANGE_SMALL], position])
+        for cone in cone_array_msg.big_orange_cones:
+            position = np.array([cone.point.x, cone.point.y])
+            cones_by_type[ConeTypes.ORANGE_BIG] = np.vstack([cones_by_type[ConeTypes.ORANGE_BIG], position])
         return cones_by_type
 
     def get_car_state(self):
-        return np.array([0.0, 0.0]), 0
+        return np.array([0.0, 0.0]), 0.0
 
 def main(args=None):
     rclpy.init(args=args)
