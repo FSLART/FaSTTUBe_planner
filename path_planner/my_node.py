@@ -28,7 +28,8 @@ class MyNode(Node):
             Path,
             'planned_path_topic',  # Replace with the actual topic name
             10)
-        # self.generate_static_data_and_plan_path()
+        
+        #self.generate_static_data_and_plan_path()
 
 
     def generate_static_data_and_plan_path(self):
@@ -38,7 +39,7 @@ class MyNode(Node):
 
         points_inner = unit_2d_vector_from_angle(phi_inner) * 9
         points_outer = unit_2d_vector_from_angle(phi_outer) * 12
-
+        
         center = np.mean((points_inner[:2] + points_outer[:2]) / 2, axis=0)
         points_inner -= center
         points_outer -= center
@@ -47,7 +48,7 @@ class MyNode(Node):
         rotated_points_outer = rotate(points_outer, -np.pi / 2)
         cones_left_raw = rotated_points_inner
         cones_right_raw = rotated_points_outer
-
+        
         rng = np.random.default_rng(0)
         rng.shuffle(cones_left_raw)
         rng.shuffle(cones_right_raw)
@@ -65,7 +66,15 @@ class MyNode(Node):
         cones_left = cones_left_raw[mask_is_left]
         cones_right = cones_right_raw[mask_is_right]
         cones_unknown = np.row_stack([cones_left_raw[~mask_is_left], cones_right_raw[~mask_is_right]])
-
+        
+        print("left cones")
+        print(cones_left)
+        
+        print("right cones")
+        print(cones_right)
+        
+        print("unknown cones")
+        print(cones_unknown)
         # Define cones_by_type as a list of 2D numpy arrays representing cones of different colors
         cones_by_type = [cones_unknown, cones_right, cones_left, np.zeros((0, 2)), np.zeros((0, 2))]
 
@@ -114,16 +123,18 @@ class MyNode(Node):
     def cone_array_listener_callback(self, msg):
 
         cones_by_type = self.process_cones(msg)
-        car_position, car_direction = self.get_car_state()
+        
+        car_position = np.array([0.0, 0.0])
+        car_direction = np.array([1.0, 0.0])
 
-        path = self.planner.calculate_path_in_global_frame(
+        path_raw = self.planner.calculate_path_in_global_frame(
             cones_by_type, car_position, car_direction)
-
+        
         path_msg = Path()
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = 'world'
-
-        for point in path:
+        
+        for point in path_raw:
             pose = PoseStamped()
             pose.header.stamp = path_msg.header.stamp
             pose.header.frame_id = path_msg.header.frame_id
@@ -132,7 +143,7 @@ class MyNode(Node):
             pose.pose.position.y = point[2]
 
             # Assuming car_direction is a float representing the direction in radians
-            quaternion = quaternion_from_euler(0, 0, car_direction)
+            quaternion = quaternion_from_euler(0, 0, car_direction[0])
             pose.pose.orientation.x = quaternion[0]
             pose.pose.orientation.y = quaternion[1]
             pose.pose.orientation.z = quaternion[2]
@@ -145,19 +156,42 @@ class MyNode(Node):
     def process_cones(self, cone_array_msg):
         # Assuming cone_array_msg has fields similar to:
         # cone_array_msg.cones, where each cone has 'position' and 'color'
-        cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
+        yellow_cones = []
+        blue_cones = []
+        unknown_cones = []
+        orange_small = []
+        orange_large = []
+
         for cone in cone_array_msg.cones:
-            position = np.array([cone.position.x, cone.position.y])
-            if cone.class_type == ConeTypes.LEFT:
-                cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
-            elif cone.class_type == ConeTypes.RIGHT:
-                cones_by_type[ConeTypes.RIGHT] = np.vstack([cones_by_type[ConeTypes.RIGHT], position])
-            elif cone.class_type == ConeTypes.UNKNOWN:
-                cones_by_type[ConeTypes.UNKNOWN] = np.vstack([cones_by_type[ConeTypes.UNKNOWN], position])
+            position = [float(cone.position.x), float(cone.position.y)]
+            if cone.class_type.data == ConeTypes.YELLOW:
+                # np.append(yellow_cones, position)
+                yellow_cones.append(position)
+            elif cone.class_type.data == ConeTypes.BLUE:
+                # np.append(blue_cones, position)
+                blue_cones.append(position)
+            elif cone.class_type.data == ConeTypes.UNKNOWN:
+                # np.append(unknown_cones, position)
+                unknown_cones.append(position)
+            elif cone.class_type.data == ConeTypes.ORANGE_SMALL:
+                # np.append(orange_small, position)
+                orange_small.append(position)
+            elif cone.class_type.data == ConeTypes.ORANGE_BIG:
+                # np.append(orange_large, position)
+                orange_large.append(position)
+        
+        cones_by_type = [
+            np.array(unknown_cones),
+            np.array(yellow_cones),
+            np.array(blue_cones),
+            np.array(orange_small),
+            np.array(orange_large)
+            ]
+        
         return cones_by_type
 
     def get_car_state(self):
-        return np.array([0.0, 0.0]), 0
+        return np.array([0.0, 0.0]), np.array([1.0, 0.0])
 
 def main(args=None):
     rclpy.init(args=args)
