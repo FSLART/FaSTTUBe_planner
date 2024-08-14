@@ -18,7 +18,7 @@ class MyNode(Node):
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
-            'cones',  # Replace with the actual topic name
+            'mapping/cones',  # Replace with the actual topic name
             self.cone_array_listener_callback,
             10)
         self.cone_array_subscription
