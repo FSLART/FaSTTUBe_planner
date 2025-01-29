@@ -3,3 +3,6 @@ include/
 install/
 log/
 path_planner.egg-info/
+path_planner/__pycache__/
+
+.vscode/

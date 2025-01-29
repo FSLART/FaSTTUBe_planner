@@ -1,7 +1,8 @@
 import rclpy
 from rclpy.node import Node
 from lart_msgs.msg import ConeArray
-from nav_msgs.msg import Path 
+from lart_msgs.msg import PathSpline
+#from nav_msgs.msg import Path 
 from geometry_msgs.msg import PoseStamped 
 from fsd_path_planning import PathPlanner, MissionTypes, ConeTypes
 import numpy as np
@@ -25,7 +26,7 @@ class MyNode(Node):
 
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
-            Path,
+            PathSpline,
             'planned_path_topic',  # Replace with the actual topic name
             10)
 
@@ -37,7 +38,7 @@ class MyNode(Node):
         path_raw = self.planner.calculate_path_in_global_frame(
             cones_by_type, car_position, car_direction)
 
-        path_msg = Path()
+        path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = 'base_footprint'
 
@@ -57,6 +58,8 @@ class MyNode(Node):
             pose.pose.orientation.w = quaternion[3]
 
             path_msg.poses.append(pose)
+            path_msg.curvature.append(point[3])
+            path_msg.distance.append(point[0])
 
         self.path_publisher.publish(path_msg)
 
