@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from lart_msgs.msg import ConeArray
+from lart_msgs.msg import ConeArray, PathSpline
 from nav_msgs.msg import Path 
 from geometry_msgs.msg import PoseStamped 
 from fsd_path_planning import PathPlanner, MissionTypes, ConeTypes
@@ -28,11 +28,15 @@ class MyNode(Node):
 
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
-            Path,
+            PathSpline,
             'planned_path_topic',  # Replace with the actual topic name
             10)
         
         #self.generate_static_data_and_plan_path()
+        self.path_publisher_rviz = self.create_publisher(
+            Path,
+            'rviz_path_topic',  # Replace with the actual topic name
+            10)
 
 
     def generate_static_data_and_plan_path(self):
@@ -134,9 +138,13 @@ class MyNode(Node):
         path_raw = self.planner.calculate_path_in_global_frame(
             cones_by_type, car_position, car_direction)
         
-        path_msg = Path()
+        path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
-        path_msg.header.frame_id = 'world'
+        path_msg.header.frame_id = 'base_footprint'
+
+        path_msg_rviz = Path()
+        path_msg_rviz.header.stamp = self.get_clock().now().to_msg()
+        path_msg_rviz.header.frame_id = 'base_footprint'
         
         for point in path_raw:
             pose = PoseStamped()
@@ -154,8 +162,13 @@ class MyNode(Node):
             pose.pose.orientation.w = quaternion[3]
 
             path_msg.poses.append(pose)
+            path_msg.curvature.append(point[3])
+            path_msg.distance.append(point[0])
+
+            path_msg_rviz.poses.append(pose)
 
         self.path_publisher.publish(path_msg)
+        self.path_publisher_rviz.publish(path_msg_rviz)
 
     def process_cones(self, cone_array_msg):
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
