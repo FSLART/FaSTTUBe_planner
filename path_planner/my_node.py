@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from lart_msgs.msg import ConeArray
 from lart_msgs.msg import PathSpline
-#from nav_msgs.msg import Path 
+from nav_msgs.msg import Path 
 from geometry_msgs.msg import PoseStamped 
 from fsd_path_planning import PathPlanner, MissionTypes, ConeTypes
 import numpy as np
@@ -30,6 +30,11 @@ class MyNode(Node):
             'planned_path_topic',  # Replace with the actual topic name
             10)
 
+        self.path_publisher_rviz = self.create_publisher(
+            Path,
+            'rviz_path_topic',
+            10)
+
     def cone_array_listener_callback(self, msg):
         print('Received cone array message')
         cones_by_type = self.process_cones(msg)
@@ -41,6 +46,10 @@ class MyNode(Node):
         path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = 'base_footprint'
+
+        path_rviz_msg =Path()
+        path_rviz_msg.header.stamp = self.get_clock().now().to_msg()
+        path_rviz_msg.header.frame_id = 'base_footprint'
 
         for point in path_raw:
             pose = PoseStamped()
@@ -61,7 +70,10 @@ class MyNode(Node):
             path_msg.curvature.append(point[3])
             path_msg.distance.append(point[0])
 
+            path_rviz_msg.poses.append(pose)
+
         self.path_publisher.publish(path_msg)
+        self.path_publisher_rviz.publish(path_rviz_msg)
 
     def process_cones(self, cone_array_msg):
         # Assuming cone_array_msg has fields similar to:
