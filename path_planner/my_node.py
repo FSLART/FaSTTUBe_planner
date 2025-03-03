@@ -11,7 +11,6 @@ from fsd_path_planning.utils.math_utils import unit_2d_vector_from_angle, rotate
 from fsd_path_planning.utils.cone_types import ConeTypes
 import matplotlib.pyplot as plt
 
-
 class MyNode(Node):
     def __init__(self):
         super().__init__('my_node')
@@ -39,10 +38,16 @@ class MyNode(Node):
             Path,
             'planned_path_topic_viz',  # Replace with the actual topic name
             10)
+        
+        plt.ion()  # Enable interactive mode
+        self.fig, self.ax = plt.subplots()
+
+        
 
     def cone_array_listener_callback(self, msg):
         print('Received cone array message')
         cones_by_type = self.process_cones(msg)
+        self.plot_cones(cones_by_type)
         car_position, car_direction = self.get_car_state()
 
         path_raw = self.planner.calculate_path_in_global_frame(
@@ -105,6 +110,32 @@ class MyNode(Node):
 
     def get_car_state(self):
         return np.array([0.0, 0.0]), np.array([1.0, 0.0])
+    
+
+    def plot_cones(self, cones_by_type):
+        self.ax.clear()
+
+        colors = ['gray', 'yellow', 'blue', 'orange', 'orange']
+        labels = ['Unknown', 'Right', 'Blue', 'Small Orange', 'Big Orange']
+
+        for cone_type, cone_positions in enumerate(cones_by_type):
+            if cone_positions.size > 0:
+                self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0], 
+                                c=colors[cone_type], label=labels[cone_type], alpha=0.7)
+
+        self.ax.set_xlim(-4, 20)
+        self.ax.set_ylim(-4, 20)
+        self.ax.invert_xaxis()
+        self.ax.invert_yaxis()
+        self.ax.set_xlabel('Y Position')
+        self.ax.set_ylabel('X Position')
+        self.ax.legend()
+        self.ax.set_aspect('equal')
+
+        plt.draw()
+        plt.pause(0.01)  # Pause to allow GUI to update
+        # self.fig.canvas.flush_events()
+
 
 def main(args=None):
     rclpy.init(args=args)
