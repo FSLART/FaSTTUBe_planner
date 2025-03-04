@@ -34,10 +34,6 @@ class MyNode(Node):
             'rviz_path_topic',
             10)
             
-        self.path_publisher_viz = self.create_publisher(
-            Path,
-            'planned_path_topic_viz',  # Replace with the actual topic name
-            10)
         
         plt.ion()  # Enable interactive mode
         self.fig, self.ax = plt.subplots()
@@ -56,9 +52,6 @@ class MyNode(Node):
         path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = 'base_footprint'
-        path_msg_viz = Path()
-        path_msg_viz.header.stamp = self.get_clock().now().to_msg()
-        path_msg_viz.header.frame_id = 'base_footprint'
 
         path_rviz_msg =Path()
         path_rviz_msg.header.stamp = self.get_clock().now().to_msg()
@@ -80,7 +73,6 @@ class MyNode(Node):
             pose.pose.orientation.w = quaternion[3]
 
             path_msg.poses.append(pose)
-            path_msg_viz.poses.append(pose)
             path_msg.curvature.append(point[3])
             path_msg.distance.append(point[0])
 
@@ -90,7 +82,6 @@ class MyNode(Node):
         
         self.path_publisher_rviz.publish(path_rviz_msg)
 
-        self.path_publisher_viz.publish(path_msg_viz)
 
 
     def process_cones(self, cone_array_msg):
