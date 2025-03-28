@@ -14,7 +14,12 @@ import matplotlib.pyplot as plt
 class MyNode(Node):
     def __init__(self):
         super().__init__('my_node')
-        self.planner = PathPlanner(MissionTypes.trackdrive)
+
+        # Get the planner mode from the args
+        self.declare_parameter('planner_mode',  4)
+        planner_mode = self.get_parameter('planner_mode').get_parameter_value().integer_value
+
+        self.planner = PathPlanner(planner_mode)
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
