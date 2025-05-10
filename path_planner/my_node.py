@@ -48,7 +48,7 @@ class MyNode(Node):
     def cone_array_listener_callback(self, msg):
         print('Received cone array message')
         cones_by_type = self.process_cones(msg)
-        self.plot_cones(cones_by_type)
+        # self.plot_cones(cones_by_type)
         car_position, car_direction = self.get_car_state()
 
         path_raw = self.planner.calculate_path_in_global_frame(
@@ -119,10 +119,9 @@ class MyNode(Node):
                 self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0], 
                                 c=colors[cone_type], label=labels[cone_type], alpha=0.7)
 
-        self.ax.set_xlim(-4, 20)
-        self.ax.set_ylim(-4, 20)
+        
         self.ax.invert_xaxis()
-        self.ax.invert_yaxis()
+        
         self.ax.set_xlabel('Y Position')
         self.ax.set_ylabel('X Position')
         self.ax.legend()
