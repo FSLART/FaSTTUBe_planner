@@ -28,6 +28,19 @@ class MyNode(Node):
             10)
         self.cone_array_subscription
 
+
+        self.pose_subscription = self.create_subscription(
+            PoseStamped,
+            '/ekf/state',
+            self.set_car_state,
+            10)
+        self.pose_subscription
+
+        self.state = np.array([0.0, 0.0, 0.0])  # Placeholder for car position
+
+
+
+
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
             PathSpline,
@@ -103,9 +116,17 @@ class MyNode(Node):
             elif cone_type == ConeTypes.UNKNOWN:
                 cones_by_type[ConeTypes.UNKNOWN] = np.vstack([cones_by_type[ConeTypes.UNKNOWN], position])
         return cones_by_type
+    
+    def set_car_state(self, msg):
+        self.state[0] = msg.pose.position.x
+        self.state[1] = msg.pose.position.y
+        self.state[2] = msg.pose.orientation.w  # Assuming w is the orientation
+        self.get_logger().info(f'Car state updated: {self.state}')
 
     def get_car_state(self):
-        return np.array([0.0, 0.0]), np.array([1.0, 0.0])
+
+        return np.array([self.state[0], self.state[1]]), unit_2d_vector_from_angle(self.state[2])
+        # return np.array([0.0, 0.0]), np.array([1.0, 0.0])
     
 
     def plot_cones(self, cones_by_type):
