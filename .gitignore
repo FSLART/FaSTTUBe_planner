@@ -6,3 +6,4 @@ path_planner.egg-info/
 path_planner/__pycache__/
 
 .vscode/
+launch/__pycache__/launch_planner.cpython-310.pyc

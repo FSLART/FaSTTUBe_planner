@@ -19,7 +19,8 @@ class MyNode(Node):
         self.declare_parameter('planner_mode',  4)
         planner_mode = self.get_parameter('planner_mode').get_parameter_value().integer_value
 
-        self.planner = PathPlanner(planner_mode)
+        self.planner = PathPlanner(MissionTypes.skidpad)
+        self.get_logger().info(self.planner.relocalization_info)
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
@@ -107,7 +108,14 @@ class MyNode(Node):
         # cone_array_msg.cones, where each cone has 'position' and 'color'
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
         for cone in cone_array_msg.cones:
-            position = np.array([cone.position.x, cone.position.y])
+
+            car_pose, car_direction= self.get_car_state()
+            cone_x = cone.position.x
+            cone_y = cone.position.y
+
+            position = np.array([car_pose[0] + car_direction[0] * cone_x - car_direction[1] * cone_y, car_pose[1] + car_direction[1] * cone_x + car_direction[0] * cone_y])
+
+            # position = np.array([cone.position.x, cone.position.y])
             cone_type = cone.class_type.data
             if cone_type == ConeTypes.LEFT:
                 cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
@@ -115,6 +123,10 @@ class MyNode(Node):
                 cones_by_type[ConeTypes.RIGHT] = np.vstack([cones_by_type[ConeTypes.RIGHT], position])
             elif cone_type == ConeTypes.UNKNOWN:
                 cones_by_type[ConeTypes.UNKNOWN] = np.vstack([cones_by_type[ConeTypes.UNKNOWN], position])
+            elif cone_type == ConeTypes.ORANGE_SMALL:
+                cones_by_type[ConeTypes.ORANGE_SMALL] = np.vstack([cones_by_type[ConeTypes.ORANGE_SMALL], position])
+            elif cone_type == ConeTypes.ORANGE_BIG:
+                cones_by_type[ConeTypes.ORANGE_BIG] = np.vstack([cones_by_type[ConeTypes.ORANGE_BIG], position])
         return cones_by_type
     
     def set_car_state(self, msg):
