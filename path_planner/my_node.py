@@ -19,12 +19,12 @@ class MyNode(Node):
         self.declare_parameter('planner_mode',  4)
         planner_mode = self.get_parameter('planner_mode').get_parameter_value().integer_value
 
-        self.planner = PathPlanner(MissionTypes.skidpad)
+        self.planner = PathPlanner(planner_mode)
         self.get_logger().info(self.planner.relocalization_info)
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
-            'mapping/cones',  # Replace with the actual topic name
+            '/ekf/map',  # Replace with the actual topic name
             self.cone_array_listener_callback,
             10)
         self.cone_array_subscription
@@ -38,9 +38,6 @@ class MyNode(Node):
         self.pose_subscription
 
         self.state = np.array([0.0, 0.0, 0.0])  # Placeholder for car position
-
-
-
 
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
@@ -62,7 +59,6 @@ class MyNode(Node):
     def cone_array_listener_callback(self, msg):
         print('Received cone array message')
         cones_by_type = self.process_cones(msg)
-        # self.plot_cones(cones_by_type)
         car_position, car_direction = self.get_car_state()
 
         path_raw = self.planner.calculate_path_in_global_frame(
@@ -101,6 +97,7 @@ class MyNode(Node):
         
         self.path_publisher_rviz.publish(path_rviz_msg)
 
+        # self.plot_cones(cones_by_type, path_raw)
 
 
     def process_cones(self, cone_array_msg):
@@ -108,14 +105,7 @@ class MyNode(Node):
         # cone_array_msg.cones, where each cone has 'position' and 'color'
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
         for cone in cone_array_msg.cones:
-
-            car_pose, car_direction= self.get_car_state()
-            cone_x = cone.position.x
-            cone_y = cone.position.y
-
-            position = np.array([car_pose[0] + car_direction[0] * cone_x - car_direction[1] * cone_y, car_pose[1] + car_direction[1] * cone_x + car_direction[0] * cone_y])
-
-            # position = np.array([cone.position.x, cone.position.y])
+            position = np.array([cone.position.x, cone.position.y])
             cone_type = cone.class_type.data
             if cone_type == ConeTypes.LEFT:
                 cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
@@ -141,7 +131,7 @@ class MyNode(Node):
         # return np.array([0.0, 0.0]), np.array([1.0, 0.0])
     
 
-    def plot_cones(self, cones_by_type):
+    def plot_cones(self, cones_by_type, path):
         self.ax.clear()
 
         colors = ['gray', 'yellow', 'blue', 'orange', 'orange']
@@ -152,13 +142,20 @@ class MyNode(Node):
                 self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0], 
                                 c=colors[cone_type], label=labels[cone_type], alpha=0.7)
 
-        
+        path = path[:, 1:3]
+
         self.ax.invert_xaxis()
+
         
+        self.ax.plot(path[:, 1], path[:, 0], color='green', label='Planned Path')
         self.ax.set_xlabel('Y Position')
         self.ax.set_ylabel('X Position')
         self.ax.legend()
         self.ax.set_aspect('equal')
+
+        # plot size
+        self.ax.set_xlim(-10, 35)
+        self.ax.set_ylim(-10, 35)
 
         plt.draw()
         plt.pause(0.01)  # Pause to allow GUI to update
