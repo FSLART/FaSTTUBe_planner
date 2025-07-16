@@ -29,4 +29,4 @@ On the publish and subscription replace with the actual topic name
 - root workspace run: `colcon build`.
 - run package: `ros2 run path_planner my_node`
 - run launch file: `ros2 launch path_planner launch_planner.py`
-
+- run with args:  `ros2 run path_planner my_node --ros-args -p planner_mode:=<planner mode>`

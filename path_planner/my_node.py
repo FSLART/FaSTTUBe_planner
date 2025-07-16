@@ -20,11 +20,11 @@ class MyNode(Node):
         planner_mode = self.get_parameter('planner_mode').get_parameter_value().integer_value
 
         self.planner = PathPlanner(planner_mode)
-        self.get_logger().info(self.planner.relocalization_info)
+        self.get_logger().info(f"{planner_mode}")
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
-            '/ekf/map',  # Replace with the actual topic name
+            '/mapping/cones',  # Replace with the actual topic name
             self.cone_array_listener_callback,
             10)
         self.cone_array_subscription
@@ -57,6 +57,9 @@ class MyNode(Node):
         
 
     def cone_array_listener_callback(self, msg):
+        if len(msg.cones) == 0:
+            self.get_logger().info('No cones received, skipping path planning.')
+            return
         print('Received cone array message')
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
@@ -103,9 +106,16 @@ class MyNode(Node):
     def process_cones(self, cone_array_msg):
         # Assuming cone_array_msg has fields similar to:
         # cone_array_msg.cones, where each cone has 'position' and 'color'
+        car_position, car_direction = self.get_car_state()
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
         for cone in cone_array_msg.cones:
-            position = np.array([cone.position.x, cone.position.y])
+            x = cone.position.x * np.cos(self.state[2]) - cone.position.y * np.sin(self.state[2]) + car_position[0]
+            y = cone.position.x * np.sin(self.state[2]) + cone.position.y * np.cos(self.state[2]) + car_position[1]
+            # x = car_position[0] + np.cos(self.state[2]) * cone.position.x - np.sin(self.state[2]) * cone.position.y
+            # y = car_position[1] + np.sin(self.state[2]) * cone.position.x + np.cos(self.state[2]) * cone.position.y
+
+            position = np.array([x, y])
+            # position = np.array([cone.position.x, cone.position.y])
             cone_type = cone.class_type.data
             if cone_type == ConeTypes.LEFT:
                 cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
