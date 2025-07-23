@@ -6,6 +6,6 @@ def generate_launch_description():
         Node(
             package='path_planner',
             executable='my_node',
-            name='path_planner'
+            name='path_planner',
         ),
     ])

@@ -3,13 +3,18 @@ from rclpy.node import Node
 from lart_msgs.msg import ConeArray
 from lart_msgs.msg import PathSpline
 from nav_msgs.msg import Path 
-from geometry_msgs.msg import PoseStamped 
+from geometry_msgs.msg import PoseStamped, PointStamped 
 from fsd_path_planning import PathPlanner, MissionTypes, ConeTypes
 import numpy as np
 from transformations import quaternion_from_euler
 from fsd_path_planning.utils.math_utils import unit_2d_vector_from_angle, rotate
 from fsd_path_planning.utils.cone_types import ConeTypes
 import matplotlib.pyplot as plt
+from tf2_ros import TransformException
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
+import tf2_geometry_msgs 
+from tf_transformations import euler_from_quaternion
 
 class MyNode(Node):
     def __init__(self):
@@ -21,6 +26,9 @@ class MyNode(Node):
 
         self.planner = PathPlanner(planner_mode)
         self.get_logger().info(f"{planner_mode}")
+
+        # self.tf_buffer = Buffer()
+        # self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
@@ -52,15 +60,26 @@ class MyNode(Node):
             
         
         plt.ion()  # Enable interactive mode
-        self.fig, self.ax = plt.subplots()
-
-        
+        self.fig, self.ax = plt.subplots()        
 
     def cone_array_listener_callback(self, msg):
         if len(msg.cones) == 0:
-            self.get_logger().info('No cones received, skipping path planning.')
+            self.get_logger().warn('No cones received, skipping path planning.')
             return
-        print('Received cone array message')
+        
+        # try:
+        #     t = self.tf_buffer.lookup_transform('world', 'base_footprint', rclpy.time.Time())
+        # except TransformException as e:
+        #     self.get_logger().warn(f"Transform error: {e}")
+        #     return
+        
+        # self.state[0] = t.transform.translation.x
+        # self.state[1] = t.transform.translation.y
+        # orientation = t.transform.rotation
+        # quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
+        # _,_,yaw = euler_from_quaternion(quaternion)
+        # self.state[2] = yaw  # Assuming the yaw angle is the third element
+
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
 
@@ -100,7 +119,7 @@ class MyNode(Node):
         
         self.path_publisher_rviz.publish(path_rviz_msg)
 
-        # self.plot_cones(cones_by_type, path_raw)
+        self.plot_cones(cones_by_type, path_raw)
 
 
     def process_cones(self, cone_array_msg):
@@ -108,12 +127,31 @@ class MyNode(Node):
         # cone_array_msg.cones, where each cone has 'position' and 'color'
         car_position, car_direction = self.get_car_state()
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
+        
         for cone in cone_array_msg.cones:
+            # Create a point in base_footprint frame
+            # cone_point = PointStamped()
+            # cone_point.header.frame_id = 'base_footprint'
+            # cone_point.header.stamp = rclpy.time.Time().to_msg()
+            # cone_point.point.x = cone.position.x
+            # cone_point.point.y = cone.position.y
+            # cone_point.point.z = cone.position.z
+
+            # try:
+            #     # Transform the point to world frame
+            #     transformed_point = self.tf_buffer.transform(cone_point, 'world')
+                
+            #     # Use the transformed coordinates
+            #     x = transformed_point.point.x
+            #     y = transformed_point.point.y
+                
+            # except TransformException as e:
+            #     self.get_logger().warn(f"Failed to transform cone: {e}")
+            #     continue
+
             x = cone.position.x * np.cos(self.state[2]) - cone.position.y * np.sin(self.state[2]) + car_position[0]
             y = cone.position.x * np.sin(self.state[2]) + cone.position.y * np.cos(self.state[2]) + car_position[1]
-            # x = car_position[0] + np.cos(self.state[2]) * cone.position.x - np.sin(self.state[2]) * cone.position.y
-            # y = car_position[1] + np.sin(self.state[2]) * cone.position.x + np.cos(self.state[2]) * cone.position.y
-
+            
             position = np.array([x, y])
             # position = np.array([cone.position.x, cone.position.y])
             cone_type = cone.class_type.data
@@ -127,6 +165,9 @@ class MyNode(Node):
                 cones_by_type[ConeTypes.ORANGE_SMALL] = np.vstack([cones_by_type[ConeTypes.ORANGE_SMALL], position])
             elif cone_type == ConeTypes.ORANGE_BIG:
                 cones_by_type[ConeTypes.ORANGE_BIG] = np.vstack([cones_by_type[ConeTypes.ORANGE_BIG], position])
+
+            
+        self.get_logger().info('cones processed')
         return cones_by_type
     
     def set_car_state(self, msg):
@@ -136,7 +177,6 @@ class MyNode(Node):
         self.get_logger().info(f'Car state updated: {self.state}')
 
     def get_car_state(self):
-
         return np.array([self.state[0], self.state[1]]), unit_2d_vector_from_angle(self.state[2])
         # return np.array([0.0, 0.0]), np.array([1.0, 0.0])
     
