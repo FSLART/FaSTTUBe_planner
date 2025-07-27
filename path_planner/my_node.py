@@ -119,7 +119,7 @@ class MyNode(Node):
         
         self.path_publisher_rviz.publish(path_rviz_msg)
 
-        self.plot_cones(cones_by_type, path_raw)
+        # self.plot_cones(cones_by_type, path_raw)
 
 
     def process_cones(self, cone_array_msg):
