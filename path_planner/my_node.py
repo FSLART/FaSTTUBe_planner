@@ -27,9 +27,6 @@ class MyNode(Node):
         self.planner = PathPlanner(planner_mode)
         self.get_logger().info(f"{planner_mode}")
 
-        # self.tf_buffer = Buffer()
-        # self.tf_listener = TransformListener(self.tf_buffer, self)
-
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
             '/mapping/cones',  # Replace with the actual topic name
@@ -40,7 +37,7 @@ class MyNode(Node):
 
         self.pose_subscription = self.create_subscription(
             PoseStamped,
-            '/ekf/state',
+            '/slam/pose',
             self.set_car_state,
             10)
         self.pose_subscription
@@ -66,19 +63,6 @@ class MyNode(Node):
         if len(msg.cones) == 0:
             self.get_logger().warn('No cones received, skipping path planning.')
             return
-        
-        # try:
-        #     t = self.tf_buffer.lookup_transform('world', 'base_footprint', rclpy.time.Time())
-        # except TransformException as e:
-        #     self.get_logger().warn(f"Transform error: {e}")
-        #     return
-        
-        # self.state[0] = t.transform.translation.x
-        # self.state[1] = t.transform.translation.y
-        # orientation = t.transform.rotation
-        # quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
-        # _,_,yaw = euler_from_quaternion(quaternion)
-        # self.state[2] = yaw  # Assuming the yaw angle is the third element
 
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
@@ -88,11 +72,11 @@ class MyNode(Node):
 
         path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
-        path_msg.header.frame_id = 'base_footprint'
+        path_msg.header.frame_id = 'world'
 
         path_rviz_msg =Path()
         path_rviz_msg.header.stamp = self.get_clock().now().to_msg()
-        path_rviz_msg.header.frame_id = 'base_footprint'
+        path_rviz_msg.header.frame_id = 'world'
 
         for point in path_raw:
             pose = PoseStamped()
@@ -173,7 +157,18 @@ class MyNode(Node):
     def set_car_state(self, msg):
         self.state[0] = msg.pose.position.x
         self.state[1] = msg.pose.position.y
-        self.state[2] = msg.pose.orientation.w  # Assuming w is the orientation
+        orientation_list = [
+            msg.pose.orientation.x,
+            msg.pose.orientation.y,
+            msg.pose.orientation.z,
+            msg.pose.orientation.w
+        ]
+        
+        # Returns (roll, pitch, yaw)
+        (roll, pitch, yaw) = euler_from_quaternion(orientation_list)
+        
+        # 3. Update the heading (yaw)
+        self.state[2] = yaw
         self.get_logger().info(f'Car state updated: {self.state}')
 
     def get_car_state(self):
