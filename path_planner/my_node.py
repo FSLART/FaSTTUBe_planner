@@ -29,7 +29,7 @@ class MyNode(Node):
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
-            '/mapping/cones',  # Replace with the actual topic name
+            '/slam/map',  # Replace with the actual topic name
             self.cone_array_listener_callback,
             10)
         self.cone_array_subscription
@@ -133,11 +133,11 @@ class MyNode(Node):
             #     self.get_logger().warn(f"Failed to transform cone: {e}")
             #     continue
 
-            x = cone.position.x * np.cos(self.state[2]) - cone.position.y * np.sin(self.state[2]) + car_position[0]
-            y = cone.position.x * np.sin(self.state[2]) + cone.position.y * np.cos(self.state[2]) + car_position[1]
+            # x = cone.position.x * np.cos(self.state[2]) - cone.position.y * np.sin(self.state[2]) + car_position[0]
+            # y = cone.position.x * np.sin(self.state[2]) + cone.position.y * np.cos(self.state[2]) + car_position[1]
             
-            position = np.array([x, y])
-            # position = np.array([cone.position.x, cone.position.y])
+            # position = np.array([x, y])
+            position = np.array([cone.position.x, cone.position.y])
             cone_type = cone.class_type.data
             if cone_type == ConeTypes.LEFT:
                 cones_by_type[ConeTypes.LEFT] = np.vstack([cones_by_type[ConeTypes.LEFT], position])
