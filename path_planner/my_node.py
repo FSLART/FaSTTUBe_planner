@@ -180,7 +180,7 @@ class MyNode(Node):
         self.ax.clear()
 
         colors = ['gray', 'yellow', 'blue', 'orange', 'orange']
-        labels = ['Unknown', 'Right', 'Blue', 'Small Orange', 'Big Orange']
+        labels = ['Unknown', 'Left', 'Right', 'Small Orange', 'Big Orange']
 
         for cone_type, cone_positions in enumerate(cones_by_type):
             if cone_positions.size > 0:
@@ -189,7 +189,6 @@ class MyNode(Node):
 
         path = path[:, 1:3]
 
-        self.ax.invert_xaxis()
 
         
         self.ax.plot(path[:, 1], path[:, 0], color='green', label='Planned Path')
@@ -198,9 +197,10 @@ class MyNode(Node):
         self.ax.legend()
         self.ax.set_aspect('equal')
 
-        # plot size
-        self.ax.set_xlim(-10, 35)
-        self.ax.set_ylim(-10, 35)
+        self.ax.invert_xaxis()
+        # # plot size
+        # self.ax.set_xlim(-10, 35)
+        # self.ax.set_ylim(-10, 35)
 
         plt.draw()
         plt.pause(0.01)  # Pause to allow GUI to update
