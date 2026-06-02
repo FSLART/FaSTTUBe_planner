@@ -70,6 +70,12 @@ class MyNode(Node):
         path_raw = self.planner.calculate_path_in_global_frame(
             cones_by_type, car_position, car_direction)
 
+        # Verify path 
+        if self.verify_path(path_raw):
+            self.get_logger().warn('Path is self-intersecting, skipping publish.')
+            return
+
+
         path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
         path_msg.header.frame_id = 'world'
@@ -205,6 +211,24 @@ class MyNode(Node):
         plt.draw()
         plt.pause(0.01)  # Pause to allow GUI to update
         # self.fig.canvas.flush_events()
+
+    def verify_path(self, path_raw):
+        if len(path_raw) < 4:
+            return False
+    
+        pts = path_raw[:, 1:3]
+        n = len(pts)
+    
+        for i in range(n - 1):
+         A, B = pts[i], pts[i+1]
+        for j in range(i + 2, n - 1):
+            C, D = pts[j], pts[j+1]
+            # Inline CCW check: segment AB intersects CD if CCW(A,C,D) != CCW(B,C,D) and CCW(A,B,C) != CCW(A,B,D)
+            if (((D[1]-A[1])*(B[0]-A[0]) > (B[1]-A[1])*(D[0]-A[0])) != ((D[1]-C[1])*(B[0]-C[0]) > (B[1]-C[1])*(D[0]-C[0]))) and \
+            (((C[1]-A[1])*(B[0]-A[0]) > (B[1]-A[1])*(C[0]-A[0])) != ((D[1]-A[1])*(B[0]-A[0]) > (B[1]-A[1])*(D[0]-A[0]))):
+                return True
+        return False
+    
 
 
 def main(args=None):
