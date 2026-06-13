@@ -15,6 +15,8 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 import tf2_geometry_msgs 
 from tf_transformations import euler_from_quaternion
+from pathlib import Path as FSPath
+import csv
 
 class MyNode(Node):
     def __init__(self):
@@ -26,6 +28,8 @@ class MyNode(Node):
 
         self.planner = PathPlanner(planner_mode)
         self.get_logger().info(f"{planner_mode}")
+
+        self._csv_path = self._load_csv_path("/home/andre-lopes/Desktop/ros2_ws/src/FaSTTUBe_planner/midpoint_path.csv")
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
@@ -57,7 +61,101 @@ class MyNode(Node):
             
         
         plt.ion()  # Enable interactive mode
-        self.fig, self.ax = plt.subplots()        
+        self.fig, self.ax = plt.subplots() 
+
+
+    def _load_csv_path(self, csv_path: str) -> np.ndarray:
+        """
+        Load the precomputed midpoint CSV.
+ 
+        Returns an (N, 4) float array with columns [s, x, y, curvature].
+        Exits with an error if the file cannot be read.
+        """
+        p = FSPath(csv_path)
+        if not p.exists():
+            self.get_logger().error(f"Midpoint CSV not found: {csv_path}")
+            raise FileNotFoundError(csv_path)
+ 
+        rows = []
+        with open(p, newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append([
+                    float(row['s']),
+                    float(row['x']),
+                    float(row['y']),
+                    float(row['curvature']),
+                ])
+ 
+        data = np.array(rows, dtype=float)
+        self.get_logger().info(
+            f"Loaded {len(data)} path points from '{csv_path}'  "
+            f"(track length ≈ {data[-1, 0]:.1f} m, spacing 0.1 m)")
+        return data
+ 
+    def get_csv_path_ahead(self, n_points: int = 100) -> np.ndarray:
+        """
+        Return the next `n_points` path points from the precomputed CSV
+        that lie ahead of the car's current position and heading.
+ 
+        Selection logic
+        ---------------
+        1. Find the closest path point to the car by Euclidean distance.
+        2. Among the k nearest candidates, pick the one whose direction
+           from the car most aligns with the car's heading vector — this
+           disambiguates overlapping sections on hairpin or figure-8 tracks.
+        3. Return the next `n_points` rows starting from that index,
+           wrapping around the closed loop if necessary.
+ 
+        Returns
+        -------
+        np.ndarray  shape (n_points, 4)
+            Columns: [s, x, y, curvature]
+            s values are re-zeroed so the first point has s = 0.
+        """
+        if self._csv_path is None or len(self._csv_path) == 0:
+            self.get_logger().warn('CSV path not loaded; returning empty array.')
+            return np.zeros((0, 4))
+ 
+        data        = self._csv_path          # (N, 4)
+        N           = len(data)
+        path_xy     = data[:, 1:3]            # (N, 2)  — x, y columns
+ 
+        car_pos     = np.array([self.state[0], self.state[1]])
+        car_heading = unit_2d_vector_from_angle(self.state[2])  # unit vector
+ 
+        # ---- 1. Distance to every path point ----
+        diffs = path_xy - car_pos             # (N, 2)
+        dists = np.hypot(diffs[:, 0], diffs[:, 1])
+ 
+        # ---- 2. Among the k nearest, pick the one best aligned with heading ----
+        k = min(20, N)
+        candidate_idx = np.argpartition(dists, k)[:k]
+ 
+        # Dot product of (path_point - car_pos) with heading vector.
+        # We want the point that is *ahead*, so dot product should be positive.
+        dots = diffs[candidate_idx] @ car_heading
+        # Weighted score: prefer close points that are also ahead
+        # score = dot / (dist + eps)  →  forward projection per unit distance
+        scores = dots / (dists[candidate_idx] + 1e-6)
+        best_local = int(np.argmax(scores))
+        start_idx  = int(candidate_idx[best_local])
+ 
+        # ---- 3. Collect next n_points with wrap-around ----
+        indices = [(start_idx + i) % N for i in range(n_points)]
+        segment = data[indices].copy()
+ 
+        # Re-zero arc-length so the first point is s = 0
+        s0             = segment[0, 0]
+        segment[:, 0] -= s0
+        # Handle wrap-around: points after the loop restart get a negative
+        # delta — add the total track length to fix them.
+        total_length   = data[-1, 0] + 0.1    # approx closed-loop length (spacing = 0.1 m)
+        wrap_mask      = segment[:, 0] < 0
+        segment[wrap_mask, 0] += total_length
+ 
+        return segment   # (n_points, 4): [s, x, y, curvature]
+      
 
     def cone_array_listener_callback(self, msg):
         if len(msg.cones) == 0:
@@ -67,8 +165,7 @@ class MyNode(Node):
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
 
-        path_raw = self.planner.calculate_path_in_global_frame(
-            cones_by_type, car_position, car_direction)
+        path_raw = self.get_csv_path_ahead(n_points=100)  # Get the next 100 path points from the CSV
 
         path_msg = PathSpline()
         path_msg.header.stamp = self.get_clock().now().to_msg()
