@@ -29,7 +29,7 @@ class MyNode(Node):
         self.planner = PathPlanner(planner_mode)
         self.get_logger().info(f"{planner_mode}")
 
-        self._csv_path = self._load_csv_path("/home/andre-lopes/Desktop/ros2_ws/src/FaSTTUBe_planner/midpoint_path.csv")
+        self._csv_path = self._load_csv_path("/home/lart/ros2_ws/midpoint_path.csv")
 
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
@@ -85,6 +85,7 @@ class MyNode(Node):
                     float(row['x']),
                     float(row['y']),
                     float(row['curvature']),
+                    float(row['v']),
                 ])
  
         data = np.array(rows, dtype=float)
@@ -193,6 +194,7 @@ class MyNode(Node):
             path_msg.poses.append(pose)
             path_msg.curvature.append(point[3])
             path_msg.distance.append(point[0])
+            path_msg.velocity.append(point[4])
 
             path_rviz_msg.poses.append(pose)
 

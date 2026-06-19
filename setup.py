@@ -18,7 +18,7 @@ setup(
     maintainer_email='username@todo.todo',
     description='Example Python package for ROS 2',
     license='Apache License 2.0',
-    tests_require=['pytest'],
+    #tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'my_node = path_planner.my_node:main'
