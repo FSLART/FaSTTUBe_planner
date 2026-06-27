@@ -27,9 +27,13 @@ class MyNode(Node):
         self.planner = PathPlanner(planner_mode)
         self.get_logger().info(f"{planner_mode}")
 
+        ############################################################
+        #                        SUBSCRIBERS                       #
+        ############################################################
+
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
-            '/slam/map',  # Replace with the actual topic name
+            '/slam/map',
             self.cone_array_listener_callback,
             10)
         self.cone_array_subscription
@@ -44,15 +48,19 @@ class MyNode(Node):
 
         self.state = np.array([0.0, 0.0, 0.0])  # Placeholder for car position
 
+        ############################################################
+        #                        PUBLISHERS                        #
+        ############################################################
+
         # Publisher for Path topic
         self.path_publisher = self.create_publisher(
             PathSpline,
-            'planned_path_topic',  # Replace with the actual topic name
+            '/path',
             10)
 
         self.path_publisher_rviz = self.create_publisher(
             Path,
-            'rviz_path_topic',
+            '/path/markers',
             10)
             
         
