@@ -3,9 +3,15 @@
 <package format="3">
   <name>path_planner</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>FaSTTUBe path planner, wrapped as a managed lifecycle node.</description>
   <maintainer email="username@todo.todo">username</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>lart_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>lifecycle_msgs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

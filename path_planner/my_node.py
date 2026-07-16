@@ -1,11 +1,11 @@
 import rclpy
-from rclpy.node import Node
+from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn
 from lart_msgs.msg import ConeArray
 from lart_msgs.msg import PathSpline
 from lart_msgs.msg import PathArray
 from lart_msgs.msg import PathPoint
-from nav_msgs.msg import Path 
-from geometry_msgs.msg import PoseStamped, PointStamped 
+from nav_msgs.msg import Path
+from geometry_msgs.msg import PoseStamped, PointStamped
 from fsd_path_planning import PathPlanner, MissionTypes, ConeTypes
 import numpy as np
 from transformations import quaternion_from_euler
@@ -15,59 +15,104 @@ import matplotlib.pyplot as plt
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
-import tf2_geometry_msgs 
+import tf2_geometry_msgs
 from tf_transformations import euler_from_quaternion
 
-class MyNode(Node):
+
+# Managed lifecycle node. This is the Python (rclpy) counterpart of the C++
+# super_node::ParentNode pattern: it cannot extend the C++ base class, so it uses
+# rclpy.lifecycle.LifecycleNode, which exposes the same standard change_state /
+# get_state services. The race_director therefore manages it exactly like the C++
+# pipeline nodes. The planner is brought Active only from the READY race state.
+#
+# Lifecycle split:
+#   on_configure  -> build the planner and the (lifecycle) path publishers
+#   on_activate   -> subscribe to the SLAM map/pose so planning only runs while Active
+#   on_deactivate -> drop the subscriptions (stop planning)
+#   on_cleanup    -> release every entity created in on_configure
+class MyNode(LifecycleNode):
     def __init__(self):
-        super().__init__('my_node')
+        super().__init__('path_planner')
 
-        # Get the planner mode from the args
-        self.declare_parameter('planner_mode',  4)
-        planner_mode = self.get_parameter('planner_mode').get_parameter_value().integer_value
+        # Parameter is declared once here; its value is read in on_configure.
+        self.declare_parameter('planner_mode', 4)
 
-        self.planner = PathPlanner(planner_mode)
-        self.get_logger().info(f"{planner_mode}")
-
-        ############################################################
-        #                        SUBSCRIBERS                       #
-        ############################################################
-
-        self.cone_array_subscription = self.create_subscription(
-            ConeArray,
-            '/slam/map',
-            self.cone_array_listener_callback,
-            10)
-        self.cone_array_subscription
-
-
-        self.pose_subscription = self.create_subscription(
-            PoseStamped,
-            '/slam/pose',
-            self.set_car_state,
-            10)
-        self.pose_subscription
+        # Entities are created in on_configure/on_activate — nothing but the node
+        # itself exists yet (mirrors the "nullptr until configure" C++ convention).
+        self.planner = None
+        self.cone_array_subscription = None
+        self.pose_subscription = None
+        self.path_publisher = None
+        self.path_publisher_rviz = None
 
         self.state = np.array([0.0, 0.0, 0.0])  # Placeholder for car position
+        self.fig = None
+        self.ax = None
 
-        ############################################################
-        #                        PUBLISHERS                        #
-        ############################################################
+    # ------------------------------------------------------------------ #
+    #                        LIFECYCLE TRANSITIONS                        #
+    # ------------------------------------------------------------------ #
 
-        # Publisher for Path topic
-        self.path_publisher = self.create_publisher(
-            PathArray,
-            '/path',
-            10)
+    def on_configure(self, state):
+        planner_mode = self.get_parameter('planner_mode').get_parameter_value().integer_value
+        self.planner = PathPlanner(planner_mode)
+        self.get_logger().info(f"Path planner configured (mode {planner_mode})")
 
-        self.path_publisher_rviz = self.create_publisher(
-            Path,
-            '/path/markers',
-            10)
-            
-        
+        # Lifecycle publishers only emit while the node is Active.
+        self.path_publisher = self.create_lifecycle_publisher(PathArray, '/path', 10)
+        self.path_publisher_rviz = self.create_lifecycle_publisher(Path, '/path/markers', 10)
+
         plt.ion()  # Enable interactive mode
-        self.fig, self.ax = plt.subplots()        
+        self.fig, self.ax = plt.subplots()
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_activate(self, state):
+        # Subscribe here so planning callbacks only fire while the node is Active.
+        self.cone_array_subscription = self.create_subscription(
+            ConeArray, '/slam/map', self.cone_array_listener_callback, 10)
+        self.pose_subscription = self.create_subscription(
+            PoseStamped, '/slam/pose', self.set_car_state, 10)
+        self.get_logger().info("Path planner active")
+        # Base class activates the lifecycle publishers.
+        return super().on_activate(state)
+
+    def on_deactivate(self, state):
+        self._destroy_subscriptions()
+        self.get_logger().info("Path planner deactivated")
+        # Base class deactivates the lifecycle publishers.
+        return super().on_deactivate(state)
+
+    def on_cleanup(self, state):
+        self._destroy_entities()
+        self.get_logger().info("Path planner cleaned up")
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_shutdown(self, state):
+        self._destroy_entities()
+        self.get_logger().info("Path planner shut down")
+        return TransitionCallbackReturn.SUCCESS
+
+    def _destroy_subscriptions(self):
+        if self.cone_array_subscription is not None:
+            self.destroy_subscription(self.cone_array_subscription)
+            self.cone_array_subscription = None
+        if self.pose_subscription is not None:
+            self.destroy_subscription(self.pose_subscription)
+            self.pose_subscription = None
+
+    def _destroy_entities(self):
+        self._destroy_subscriptions()
+        if self.path_publisher is not None:
+            self.destroy_lifecycle_publisher(self.path_publisher)
+            self.path_publisher = None
+        if self.path_publisher_rviz is not None:
+            self.destroy_lifecycle_publisher(self.path_publisher_rviz)
+            self.path_publisher_rviz = None
+        self.planner = None
+
+    # ------------------------------------------------------------------ #
+    #                            CALLBACKS                                #
+    # ------------------------------------------------------------------ #
 
     def cone_array_listener_callback(self, msg):
         if len(msg.cones) == 0:
@@ -117,7 +162,7 @@ class MyNode(Node):
             path_rviz_msg.poses.append(pose)
 
         self.path_publisher.publish(path_msg)
-        
+
         self.path_publisher_rviz.publish(path_rviz_msg)
 
         # self.plot_cones(cones_by_type, path_raw)
@@ -128,7 +173,7 @@ class MyNode(Node):
         # cone_array_msg.cones, where each cone has 'position' and 'color'
         car_position, car_direction = self.get_car_state()
         cones_by_type = [np.zeros((0, 2)) for _ in range(5)]
-        
+
         for cone in cone_array_msg.cones:
             # Create a point in base_footprint frame
             # cone_point = PointStamped()
@@ -141,18 +186,18 @@ class MyNode(Node):
             # try:
             #     # Transform the point to world frame
             #     transformed_point = self.tf_buffer.transform(cone_point, 'world')
-                
+
             #     # Use the transformed coordinates
             #     x = transformed_point.point.x
             #     y = transformed_point.point.y
-                
+
             # except TransformException as e:
             #     self.get_logger().warn(f"Failed to transform cone: {e}")
             #     continue
 
             # x = cone.position.x * np.cos(self.state[2]) - cone.position.y * np.sin(self.state[2]) + car_position[0]
             # y = cone.position.x * np.sin(self.state[2]) + cone.position.y * np.cos(self.state[2]) + car_position[1]
-            
+
             # position = np.array([x, y])
             position = np.array([cone.position.x, cone.position.y])
             cone_type = cone.class_type.data
@@ -167,10 +212,10 @@ class MyNode(Node):
             elif cone_type == ConeTypes.ORANGE_BIG:
                 cones_by_type[ConeTypes.ORANGE_BIG] = np.vstack([cones_by_type[ConeTypes.ORANGE_BIG], position])
 
-            
+
         self.get_logger().info('cones processed')
         return cones_by_type
-    
+
     def set_car_state(self, msg):
         self.state[0] = msg.pose.position.x
         self.state[1] = msg.pose.position.y
@@ -180,10 +225,10 @@ class MyNode(Node):
             msg.pose.orientation.z,
             msg.pose.orientation.w
         ]
-        
+
         # Returns (roll, pitch, yaw)
         (roll, pitch, yaw) = euler_from_quaternion(orientation_list)
-        
+
         # 3. Update the heading (yaw)
         self.state[2] = yaw
         self.get_logger().info(f'Car state updated: {self.state}')
@@ -191,7 +236,7 @@ class MyNode(Node):
     def get_car_state(self):
         return np.array([self.state[0], self.state[1]]), unit_2d_vector_from_angle(self.state[2])
         # return np.array([0.0, 0.0]), np.array([1.0, 0.0])
-    
+
 
     def plot_cones(self, cones_by_type, path):
         self.ax.clear()
@@ -201,13 +246,13 @@ class MyNode(Node):
 
         for cone_type, cone_positions in enumerate(cones_by_type):
             if cone_positions.size > 0:
-                self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0], 
+                self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0],
                                 c=colors[cone_type], label=labels[cone_type], alpha=0.7)
 
         path = path[:, 1:3]
 
 
-        
+
         self.ax.plot(path[:, 1], path[:, 0], color='green', label='Planned Path')
         self.ax.set_xlabel('Y Position')
         self.ax.set_ylabel('X Position')
