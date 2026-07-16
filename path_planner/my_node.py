@@ -1,3 +1,5 @@
+from turtle import stamp
+
 import rclpy
 from rclpy.node import Node
 from lart_msgs.msg import ConeArray
@@ -15,6 +17,10 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 import tf2_geometry_msgs 
 from tf_transformations import euler_from_quaternion
+from visualization_msgs.msg import Marker, MarkerArray
+from scipy.spatial import Delaunay
+from geometry_msgs.msg import Point
+from std_msgs.msg import ColorRGBA
 
 class MyNode(Node):
     def __init__(self):
@@ -27,13 +33,18 @@ class MyNode(Node):
         self.planner = PathPlanner(planner_mode)
         self.get_logger().info(f"{planner_mode}")
 
+        # Delaunay pre-processing parameters
+        self.declare_parameter('max_cone_distance', 20.0)  # m — ignore cones beyond this
+        self.declare_parameter('max_gate_width',     6.0)  # m — max left-right pair distance
+
+        #change
         self.cone_array_subscription = self.create_subscription(
             ConeArray,
-            '/slam/map',  # Replace with the actual topic name
+            '/mapping/cones',
             self.cone_array_listener_callback,
             10)
-        self.cone_array_subscription
 
+        self.state = np.array([0.0, 0.0, 0.0])  # [x, y, yaw]
 
         self.pose_subscription = self.create_subscription(
             PoseStamped,
@@ -41,7 +52,6 @@ class MyNode(Node):
             self.set_car_state,
             10)
         self.pose_subscription
-
         self.state = np.array([0.0, 0.0, 0.0])  # Placeholder for car position
 
         # Publisher for Path topic
@@ -54,6 +64,15 @@ class MyNode(Node):
             Path,
             'rviz_path_topic',
             10)
+        
+        self.pub_delaunay_edges_  = self.create_publisher(
+            MarkerArray, '/debug/delaunay/all_edges',   10)   # gray — all triangulation edges
+        self.pub_delaunay_gates_  = self.create_publisher(
+            MarkerArray, '/debug/delaunay/gates',       10)   # green — valid blue-yellow gates
+        self.pub_delaunay_midpts_ = self.create_publisher(
+            MarkerArray, '/debug/delaunay/midpoints',   10)   # yellow — centerline waypoints
+        self.pub_filtered_cones_  = self.create_publisher(
+            MarkerArray, '/debug/delaunay/filtered_cones', 10) # blue/yellow — filtered cones
             
         
         plt.ion()  # Enable interactive mode
@@ -67,8 +86,15 @@ class MyNode(Node):
         cones_by_type = self.process_cones(msg)
         car_position, car_direction = self.get_car_state()
 
+        filtered_cones_by_type = self.delaunay_filter_cones(
+            cones_by_type, car_position)
+        
+        if filtered_cones_by_type is None:
+            self.get_logger().warn('Delaunay pre-processing failed, skipping.')
+            return
+        
         path_raw = self.planner.calculate_path_in_global_frame(
-            cones_by_type, car_position, car_direction)
+            filtered_cones_by_type, car_position, car_direction)
 
         # Verify path 
         if self.verify_path(path_raw):
@@ -106,12 +132,228 @@ class MyNode(Node):
             path_rviz_msg.poses.append(pose)
 
         self.path_publisher.publish(path_msg)
-        
         self.path_publisher_rviz.publish(path_rviz_msg)
+        #self.plot_cones(cones_by_type, path_raw)
 
-        # self.plot_cones(cones_by_type, path_raw)
+    def delaunay_filter_cones(self, cones_by_type, car_position):
+        max_cone_dist  = self.get_parameter('max_cone_distance').get_parameter_value().double_value
+        max_gate_width = self.get_parameter('max_gate_width').get_parameter_value().double_value
+ 
+        stamp = self.get_clock().now().to_msg()
+        
+        left_cones  = cones_by_type[ConeTypes.LEFT]
+        right_cones = cones_by_type[ConeTypes.RIGHT]
+ 
+        # Filter cones too far from the car
+        left_cones  = self._filter_by_distance(left_cones,  car_position, max_cone_dist)
+        right_cones = self._filter_by_distance(right_cones, car_position, max_cone_dist)
+ 
+        if len(left_cones) < 2 or len(right_cones) < 2:
+            self.get_logger().warn(
+                f'Delaunay: not enough cones (left={len(left_cones)}, right={len(right_cones)})')
+            # Return original cones — let fsd_path_planning handle it
+            return cones_by_type
+ 
+        # Combine all cones with labels
+        # 0 = left (blue), 1 = right (yellow)
+        all_cones = np.vstack([left_cones, right_cones])
+        labels    = np.array([0] * len(left_cones) + [1] * len(right_cones))
+ 
+        # Delaunay triangulation
+        try:
+            tri = Delaunay(all_cones)
+        except Exception as e:
+            self.get_logger().warn(f'Delaunay failed: {e} — using raw cones')
+            return cones_by_type
+ 
+        # Find which cone indices participate in at least one valid gate
+        valid_left_indices  = set()
+        valid_right_indices = set()
+        seen_pairs          = set()
 
+        all_edge_pairs = []
+        gate_pairs     = []
+        midpoints      = []
+ 
+        for simplex in tri.simplices:
+            for i in range(3):
+                for j in range(i + 1, 3):
+                    a = simplex[i]
+                    b = simplex[j]
 
+                    pair = (min(a, b), max(a, b))
+
+                    # Only cross-boundary edges (left ↔ right)
+                    if pair not in seen_pairs:
+                        all_edge_pairs.append((a, b))
+ 
+                    if pair in seen_pairs:
+                        continue
+                    seen_pairs.add(pair)
+ 
+                    if labels[a] == labels[b]:
+                        continue
+ 
+                    gate_dist = np.linalg.norm(all_cones[a] - all_cones[b])
+                    if gate_dist > max_gate_width:
+                        continue
+                    
+                    gate_pairs.append((a, b))
+                    midpoints.append(0.5 * (all_cones[a] + all_cones[b]))
+ 
+                    if labels[a] == 0:
+                        valid_left_indices.add(a)
+                        valid_right_indices.add(b)
+                    else:
+                        valid_right_indices.add(a)
+                        valid_left_indices.add(b)
+
+        self._publish_all_edges(all_edge_pairs, all_cones, stamp)
+        self._publish_gates(gate_pairs, all_cones, stamp)
+        self._publish_midpoints(midpoints, stamp)
+        self._publish_filtered_cones(valid_left_indices, valid_right_indices, all_cones, len(left_cones), stamp)
+
+        # Build filtered cones from valid indices
+        n_left = len(left_cones)
+ 
+        # Left cone indices are 0..n_left-1 in all_cones
+        # Right cone indices are n_left..end in all_cones
+        filtered_left  = np.array([left_cones[i]            for i in sorted(valid_left_indices)])
+        filtered_right = np.array([right_cones[i - n_left]  for i in sorted(valid_right_indices)])
+ 
+        if len(filtered_left) < 2 or len(filtered_right) < 2:
+            self.get_logger().warn(
+                'Delaunay: too few valid cones after filtering — using raw cones')
+            return cones_by_type
+ 
+        self.get_logger().info(
+            f'Delaunay filter: left {len(left_cones)}→{len(filtered_left)}, '
+            f'right {len(right_cones)}→{len(filtered_right)}')
+ 
+        # Build filtered cones_by_type
+        # Keep all other cone types (unknown, orange) unchanged
+        filtered_cones_by_type = list(cones_by_type)
+        filtered_cones_by_type[ConeTypes.LEFT]  = filtered_left
+        filtered_cones_by_type[ConeTypes.RIGHT] = filtered_right
+ 
+        return filtered_cones_by_type
+
+    def _publish_all_edges(self, edge_pairs, all_cones, stamp):
+        """All Delaunay triangulation edges — gray lines."""
+        marker = Marker()
+        marker.header.stamp    = stamp
+        marker.header.frame_id = 'world'
+        marker.ns              = 'delaunay_all_edges'
+        marker.id              = 0
+        marker.type            = Marker.LINE_LIST
+        marker.action          = Marker.ADD
+        marker.scale.x         = 0.05
+        marker.color           = self._color(0.5, 0.5, 0.5, 0.4)  # gray
+        for a, b in edge_pairs:
+            marker.points.append(self._point(all_cones[a]))
+            marker.points.append(self._point(all_cones[b]))
+        arr = MarkerArray()
+        arr.markers.append(marker)
+        self.pub_delaunay_edges_.publish(arr)
+
+    def _publish_gates(self, gate_pairs, all_cones, stamp):
+        """Valid blue-yellow gates — bright green lines."""
+        marker = Marker()
+        marker.header.stamp    = stamp
+        marker.header.frame_id = 'world'
+        marker.ns              = 'delaunay_gates'
+        marker.id              = 0
+        marker.type            = Marker.LINE_LIST
+        marker.action          = Marker.ADD
+        marker.scale.x         = 0.12
+        marker.color           = self._color(0.0, 1.0, 0.0, 1.0)  # green
+        for a, b in gate_pairs:
+            marker.points.append(self._point(all_cones[a]))
+            marker.points.append(self._point(all_cones[b]))
+        arr = MarkerArray()
+        arr.markers.append(marker)
+        self.pub_delaunay_gates_.publish(arr)
+
+    def _publish_midpoints(self, midpoints, stamp):
+        """Gate midpoints — yellow spheres."""
+        arr = MarkerArray()
+        for i, mid in enumerate(midpoints):
+            m = Marker()
+            m.header.stamp    = stamp
+            m.header.frame_id = 'world'
+            m.ns              = 'delaunay_midpoints'
+            m.id              = i
+            m.type            = Marker.SPHERE
+            m.action          = Marker.ADD
+            m.pose.position   = self._point(mid)
+            m.pose.orientation.w = 1.0
+
+            m.scale.x         = 0.3
+            m.scale.y         = 0.3
+            m.scale.z         = 0.3
+            m.color           = self._color(1.0, 1.0, 0.0, 1.0)  # yellow
+            arr.markers.append(m)
+        self.pub_delaunay_midpts_.publish(arr)
+
+    def _publish_filtered_cones(self, valid_left, valid_right, all_cones, n_left, stamp):
+        """Filtered cones — blue for left, yellow for right."""
+        arr = MarkerArray()
+        marker_id = 0
+        for i in valid_left:
+            m = Marker()
+            m.header.stamp    = stamp
+            m.header.frame_id = 'world'
+            m.ns              = 'filtered_cones'
+            m.id              = marker_id
+            m.type            = Marker.CYLINDER
+            m.action          = Marker.ADD
+            m.pose.position   = self._point(all_cones[i])
+            m.pose.orientation.w = 1.0
+
+            m.scale.x = m.scale.y = 0.3
+            m.scale.z         = 0.5
+            m.color           = self._color(0.0, 0.0, 1.0, 1.0)  # blue
+            arr.markers.append(m)
+            marker_id += 1
+        for i in valid_right:
+            m = Marker()
+            m.header.stamp    = stamp
+            m.header.frame_id = 'world'
+            m.ns              = 'filtered_cones'
+            m.id              = marker_id
+            m.type            = Marker.CYLINDER
+            m.action          = Marker.ADD
+            m.pose.position   = self._point(all_cones[i])
+            m.pose.orientation.w = 1.0
+            
+            m.scale.x = m.scale.y = 0.3
+            m.scale.z         = 0.5
+            m.color           = self._color(1.0, 1.0, 0.0, 1.0)  # yellow
+            arr.markers.append(m)
+            marker_id += 1
+        self.pub_filtered_cones_.publish(arr)
+
+    def _point(self, xy):
+        p = Point()
+        p.x = float(xy[0])
+        p.y = float(xy[1])
+        p.z = 0.0
+        return p
+
+    def _color(self, r, g, b, a):
+        c = ColorRGBA()
+        c.r = float(r)
+        c.g = float(g)
+        c.b = float(b)
+        c.a = float(a)
+        return c
+
+    def _filter_by_distance(self, cones, car_position, max_dist):
+        if len(cones) == 0:
+            return cones
+        dists = np.linalg.norm(cones - car_position, axis=1)
+        return cones[dists <= max_dist]
+    
     def process_cones(self, cone_array_msg):
         # Assuming cone_array_msg has fields similar to:
         # cone_array_msg.cones, where each cone has 'position' and 'color'
