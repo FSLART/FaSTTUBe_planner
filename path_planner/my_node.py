@@ -112,6 +112,7 @@ class MyNode(Node):
             path_point.y = point[2]
             path_point.curvature = point[3]
             path_point.distance = point[0]
+            path_point.velocity = -1
             path_msg.points.append(path_point)
 
             path_rviz_msg.poses.append(pose)
