@@ -11,7 +11,7 @@ import numpy as np
 from transformations import quaternion_from_euler
 from fsd_path_planning.utils.math_utils import unit_2d_vector_from_angle, rotate
 from fsd_path_planning.utils.cone_types import ConeTypes
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
@@ -66,8 +66,8 @@ class MyNode(Node):
             10)
             
         
-        plt.ion()  # Enable interactive mode
-        self.fig, self.ax = plt.subplots()        
+        # plt.ion()  # Enable interactive mode
+        # self.fig, self.ax = plt.subplots()
 
     def cone_array_listener_callback(self, msg):
         if len(msg.cones) == 0:
@@ -112,7 +112,7 @@ class MyNode(Node):
             path_point.y = point[2]
             path_point.curvature = point[3]
             path_point.distance = point[0]
-            path_point.velocity = -1
+            path_point.velocity = -1.0
             path_msg.points.append(path_point)
 
             path_rviz_msg.poses.append(pose)
@@ -194,35 +194,35 @@ class MyNode(Node):
         # return np.array([0.0, 0.0]), np.array([1.0, 0.0])
     
 
-    def plot_cones(self, cones_by_type, path):
-        self.ax.clear()
-
-        colors = ['gray', 'yellow', 'blue', 'orange', 'orange']
-        labels = ['Unknown', 'Left', 'Right', 'Small Orange', 'Big Orange']
-
-        for cone_type, cone_positions in enumerate(cones_by_type):
-            if cone_positions.size > 0:
-                self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0], 
-                                c=colors[cone_type], label=labels[cone_type], alpha=0.7)
-
-        path = path[:, 1:3]
-
-
-        
-        self.ax.plot(path[:, 1], path[:, 0], color='green', label='Planned Path')
-        self.ax.set_xlabel('Y Position')
-        self.ax.set_ylabel('X Position')
-        self.ax.legend()
-        self.ax.set_aspect('equal')
-
-        self.ax.invert_xaxis()
-        # # plot size
-        # self.ax.set_xlim(-10, 35)
-        # self.ax.set_ylim(-10, 35)
-
-        plt.draw()
-        plt.pause(0.01)  # Pause to allow GUI to update
-        # self.fig.canvas.flush_events()
+    # def plot_cones(self, cones_by_type, path):
+    #     self.ax.clear()
+    #
+    #     colors = ['gray', 'yellow', 'blue', 'orange', 'orange']
+    #     labels = ['Unknown', 'Left', 'Right', 'Small Orange', 'Big Orange']
+    #
+    #     for cone_type, cone_positions in enumerate(cones_by_type):
+    #         if cone_positions.size > 0:
+    #             self.ax.scatter(cone_positions[:, 1], cone_positions[:, 0],
+    #                             c=colors[cone_type], label=labels[cone_type], alpha=0.7)
+    #
+    #     path = path[:, 1:3]
+    #
+    #
+    #
+    #     self.ax.plot(path[:, 1], path[:, 0], color='green', label='Planned Path')
+    #     self.ax.set_xlabel('Y Position')
+    #     self.ax.set_ylabel('X Position')
+    #     self.ax.legend()
+    #     self.ax.set_aspect('equal')
+    #
+    #     self.ax.invert_xaxis()
+    #     # # plot size
+    #     # self.ax.set_xlim(-10, 35)
+    #     # self.ax.set_ylim(-10, 35)
+    #
+    #     plt.draw()
+    #     plt.pause(0.01)  # Pause to allow GUI to update
+    #     # self.fig.canvas.flush_events()
 
 
 def main(args=None):
